@@ -67,6 +67,8 @@ void setup() {
 
   RPI_SERIAL.begin(RPI_BAUD_RATE);
 
+  Serial.begin(9600);
+   
   pwmEmulation.begin(PCA9685_I2C_ADDRESS);
 
   //  allow things to settle
@@ -139,27 +141,46 @@ void check_voltage(uint32_t now) {
 }
 
 uint32_t lastInputTime = 0;
+uint16_t val = 0;
 
 void read_inputs(uint32_t now) {
+  
   /* update PWM inputs */
   if (rcSteer.hasValue()) {
-    iBusInput[0] = rcSteer.getValue();
-    lastInputTime = now;
+    val = rcSteer.getValue();
+    if(abs(iBusInput[0] - val) > VAL_DRIFT)
+    {
+      iBusInput[0] = val;
+      lastInputTime = now;
+    }
   }
+  
   if (rcThrottle.hasValue()) {
-    iBusInput[1] = rcThrottle.getValue();
-    lastInputTime = now;
+    val = rcThrottle.getValue();
+    if(abs(iBusInput[1] - val) > VAL_DRIFT)
+    {
+      iBusInput[1] = val;
+      lastInputTime = now;
+    }
   }
+  
   if (rcMode.hasValue()) {
-    iBusInput[2] = rcMode.getValue();
-    lastInputTime = now;
+    val = rcMode.getValue();
+    if(abs(iBusInput[2] - val) > VAL_DRIFT)
+    {
+      iBusInput[2] = val;
+      lastInputTime = now;
+    }
   }
   
   /* update ibus input */
+  /*
   fsIbus.step(now);
   if (fsIbus.hasFreshFrame()) {
     lastInputTime = now;
   }
+  */
+  
 
   /*  RC and iBus will fight, if they are both wired up.  
    *  If only one is wired, that one will take over.
@@ -196,6 +217,9 @@ void do_serial_command(char const *cmd, uint32_t now) {
       }
     }
   }
+  
+  Serial.println("doing serial command");
+  
   if (cmdchar == 'D' && nvals == 2) {
     //  drive
     serialSteer = servalues[0];
@@ -240,7 +264,10 @@ void read_serial(uint32_t now) {
 }
 
 void apply_control_adjustments(uint16_t &steer, uint16_t &throttle) {
-  steer = (uint16_t)(((int)steer - 1500 + STEER_ADJUSTMENT) * STEER_MULTIPLY + 1500);
+  //steer = (uint16_t)(((int)steer - STEER_CENTER + STEER_ADJUSTMENT) * STEER_MULTIPLY + STEER_CENTER);
+  if(steer == 0)
+    steer = STEER_CENTER;
+    
   if (steer < MIN_STEER) {
     steer = MIN_STEER;
   }
@@ -257,11 +284,38 @@ void apply_control_adjustments(uint16_t &steer, uint16_t &throttle) {
   }
 }
 
+uint16_t last_steer = STEER_CENTER;
+
+uint16_t last_i2c_steer = 0;
+uint16_t last_i2c_th = 0;
+
+void filter_i2c_events()
+{
+  uint16_t steer = STEER_CENTER;
+  uint16_t throttle = THROTTLE_CENTER;
+  
+  if (lastI2cTime) 
+  {
+    steer = pwmEmulation.readChannelUs(0);
+    throttle = pwmEmulation.readChannelUs(1);
+
+    if (steer == last_i2c_steer && throttle == last_i2c_th && abs(steer - STEER_CENTER) < 35) 
+    {
+        lastI2cTime = 0;
+    }
+    
+    last_i2c_steer = steer;
+    last_i2c_th = throttle;
+  }
+}
+  
 void generate_output(uint32_t now) {
 
-  uint16_t steer = 1500;
-  uint16_t throttle = 1500;
+  uint16_t steer = STEER_CENTER;
+  uint16_t throttle = THROTTLE_CENTER;
   bool autoSource = false;
+
+  filter_i2c_events();
 
   if (lastInputTime && ((iBusInput[2] > 1800) || (iBusInput[9] > 1800))) {
     //  if aux channel is high, or tenth channel (right switch on FSi6) is set,
@@ -284,13 +338,14 @@ void generate_output(uint32_t now) {
     steer = iBusInput[0];
     throttle = iBusInput[1];
   }
-  
+
+  /*
   if (autoSource) {
     //  safety control if auto-driving
-    if (iBusInput[1] < 1400) {
+    if (iBusInput[1] < 360) {
       //  back up if throttle control says so
       throttle = min(iBusInput[1], throttle);
-      steer = 1500;
+      steer = 370;
     } else {
       if (iBusInput[1] < 1600) {
         //  don't allow driving if throttle doesn't say drive
@@ -298,8 +353,23 @@ void generate_output(uint32_t now) {
       }
     }
   }
+  */
   
   apply_control_adjustments(steer, throttle);
+  
+  if(steer != last_steer)
+  {
+    Serial.print("s:");
+    Serial.print(steer);
+    //Serial.print("t:");
+    //Serial.print(throttle);
+    Serial.println(" ");
+    last_steer = steer;
+  }
+  
+  //steer = 1500;
+  //throttle = 1500;
+   
   svoSteer.writeMicroseconds(steer);
   svoThrottle.writeMicroseconds(throttle);
 }
@@ -343,8 +413,8 @@ void loop() {
   if (lastInputTime && (now - lastInputTime > INPUT_TIMEOUT)) {
     //  Decide that we don't have any control input if there 
     //  is nothing coming in for a while.
-    lastInputTime = 0;
-  }
+      lastInputTime = 0;
+    }
   
   /* look for i2c drive commands */
   read_i2c(now);
@@ -352,14 +422,16 @@ void loop() {
     lastI2cTime = 0;
   }
 
+/*
   read_serial(now);
   if (lastSerialTime && (now - lastSerialTime > INPUT_TIMEOUT)) {
     lastSerialTime = 0;
   }
-
+  */
+  
   generate_output(now);
 
-  update_serial(now);
+  //update_serial(now);
 
   check_voltage(now);
 }

@@ -60,10 +60,12 @@ uint16_t PCA9685Emulator::readChannelUs(uint8_t ch) {
   }
   uint16_t ret;
   cli();
-  if ((mem[MODE1] & SLEEP) | !(mem[MODE2] & OUTDRV)) {
-    ret = 0;
-  } else {
-    ret = ((uint32_t)mem[LED0_ON_L+4*ch] + ((uint32_t)mem[LED0_ON_H+4*ch]<<8)) * ((uint32_t)mem[FAKE_PRESCALE]+1) / 25ul;
+  //if ((mem[MODE1] & SLEEP) | !(mem[MODE2] & OUTDRV)) {
+  //  ret = 0;
+  //} else {
+  {
+    //ret = ((uint32_t)mem[LED0_ON_L+4*ch] + ((uint32_t)mem[LED0_ON_H+4*ch]<<8)) * ((uint32_t)mem[FAKE_PRESCALE]+1) / 25ul;
+    ret = ((uint32_t)mem[LED0_OFF_L+4*ch] + ((uint32_t)mem[LED0_OFF_H+4*ch]<<8)) * ((uint32_t)mem[FAKE_PRESCALE]+1) / 25ul;
   }
   sei();
   return ret;
@@ -102,17 +104,29 @@ void PCA9685Emulator::onReceive2(int received)
       }
     } else {
       //  a write
-      gotwrite = true;
       wptr = Wire.read();
       --received;
       while (received > 0) {
+        uint8_t val = Wire.read();
         if (wptr < sizeof(mem)) {
-          mem[wptr & 0xf] = Wire.read();
+          uint8_t addr = wptr & 0xf;
+          mem[addr] = val;
+          //Serial.print("rcv ");
+          //Serial.print(addr);
+          //Serial.print(" ");
+          //Serial.println(val);
+
+          if((addr & 3) == 1)
+            gotwrite = true;
+            
         } else if (wptr == PRESCALE) {
-          mem[FAKE_PRESCALE] = Wire.read();
-        } else {
-          (void)Wire.read();
+          mem[FAKE_PRESCALE] = val;
+          //Serial.print("prescale");
+          //Serial.println(val);
+          gotwrite = true;
+      
         }
+        
         ++wptr;
         --received;
       }

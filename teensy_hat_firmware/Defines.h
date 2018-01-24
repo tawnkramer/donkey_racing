@@ -4,17 +4,21 @@
 //  PWM values are between 1000 and 2000, with 1500 meaning "zero"
 
 //  Limit the throttle, so that kiddos don't go too crazy.
-#define MIN_THROTTLE 1300
-#define MAX_THROTTLE 1700
+#define MIN_THROTTLE 1000
+#define MAX_THROTTLE 2000
+#define THROTTLE_CENTER 1500
 #define THROTTLE_ADJUSTMENT 0
 
 //  Slightly limit steering to prevent the servo from bottoming out.
-#define MIN_STEER 1100
-#define MAX_STEER 1900
+#define MIN_STEER 1300
+#define MAX_STEER 1700
+#define STEER_CENTER 1500
 //  My steering is slightly off to the left, so compensate.
-#define STEER_ADJUSTMENT 14
+#define STEER_ADJUSTMENT 0
 //  My HiTec servo is backwards. Set this to 1 for regular.
 #define STEER_MULTIPLY -1
+//area around center that we count as center
+#define VAL_DRIFT 2
 
 #define PIN_STEER_IN 11
 #define PIN_THROTTLE_IN 12
